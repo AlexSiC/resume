@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Подготовка производства для линии плазменной резки профиля — кейс</title>
+<meta name="description" content="Case study: твердотельное моделирование резов на CadQuery, проверка пересечений по телам удалённого металла, раскрой на OR-Tools CP-SAT. Блок разработки за 3 млн ₽ закрыт одним человеком.">
+<style>
+  :root {
+    --bg: #fafaf7;
+    --surface: #ffffff;
+    --ink: #1b1b18;
+    --muted: #6e6e66;
+    --line: #d9d9d1;
+    --line-strong: #1b1b18;
+    --accent: #e04a00;
+    --sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+    --maxw: 1060px;
+    --textw: 640px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--accent); color: #fff; }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  a { color: inherit; }
+
+  /* ---------- top bar ---------- */
+  header {
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 24px;
+    max-width: var(--maxw);
+    margin: 0 auto;
+  }
+  .bar .tag {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .bar .tag b { color: var(--ink); font-weight: 600; }
+  .bar a.contact {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-decoration: none;
+    border: 1px solid var(--line-strong);
+    padding: 7px 14px;
+    white-space: nowrap;
+    transition: background .15s, color .15s;
+  }
+  .bar a.contact:hover { background: var(--ink); color: var(--bg); }
+
+  /* ---------- scaffolding ---------- */
+  section { padding: 88px 0; border-bottom: 1px solid var(--line); }
+
+  .label {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 24px;
+  }
+  .label::before { content: "— "; color: var(--line-strong); }
+
+  h1, h2 { font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; text-wrap: balance; }
+  h2 { font-size: clamp(26px, 3.6vw, 38px); margin-bottom: 24px; max-width: 760px; }
+
+  .text { max-width: var(--textw); }
+  .text p + p { margin-top: 16px; }
+  .muted { color: var(--muted); }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 104px 0 88px; }
+  .hero h1 { font-size: clamp(32px, 5vw, 58px); max-width: 900px; margin-bottom: 28px; }
+  .hero .sub {
+    font-size: clamp(17px, 2vw, 20px);
+    color: var(--muted);
+    max-width: 700px;
+    margin-bottom: 40px;
+  }
+  .hero .sub em { font-style: normal; color: var(--ink); }
+
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 56px; }
+  .btn {
+    font-family: var(--mono);
+    font-size: 14px;
+    text-decoration: none;
+    padding: 13px 22px;
+    border: 1px solid var(--line-strong);
+    transition: background .15s, color .15s;
+  }
+  .btn.primary { background: var(--ink); color: var(--bg); }
+  .btn.primary:hover { background: var(--accent); border-color: var(--accent); }
+  .btn.ghost:hover { background: var(--ink); color: var(--bg); }
+
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-top: 1px solid var(--line);
+    padding-top: 24px;
+    max-width: 900px;
+  }
+  .badges span {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 5px 10px;
+    background: var(--surface);
+  }
+
+  /* ---------- stats ---------- */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 48px 0; }
+  .stat { border: 1px solid var(--line-strong); background: var(--surface); padding: 28px 24px; }
+  .stat .n {
+    font-family: var(--mono);
+    font-size: clamp(21px, 2.5vw, 30px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 10px;
+  }
+  .stat .n .accent { color: var(--accent); }
+  .stat .d { font-size: 14px; color: var(--muted); }
+
+  /* ---------- problem ---------- */
+  .pains { margin-top: 40px; max-width: 720px; border-top: 1px solid var(--line-strong); }
+  .pains li {
+    list-style: none;
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .pains li::before {
+    content: attr(data-n);
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+    padding-top: 3px;
+  }
+
+  /* ---------- key idea ---------- */
+  .idea blockquote {
+    font-size: clamp(22px, 3vw, 30px);
+    font-weight: 550;
+    letter-spacing: -0.015em;
+    line-height: 1.35;
+    max-width: 800px;
+    margin: 0 0 28px;
+    text-wrap: balance;
+  }
+  .idea blockquote .hl { color: var(--accent); }
+
+  /* ---------- code ---------- */
+  .code {
+    margin-top: 40px;
+    max-width: 780px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+  }
+  .code .code-head {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--line);
+    letter-spacing: .04em;
+  }
+  .code pre {
+    padding: 20px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+  .code pre .c { color: var(--muted); }
+  .code pre .k { color: var(--accent); }
+  .code-note {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    max-width: 780px;
+    margin-top: 12px;
+  }
+
+  /* ---------- diagram ---------- */
+  .diagram {
+    margin-top: 48px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    padding: 36px 28px;
+    overflow-x: auto;
+  }
+  .flow { display: flex; flex-direction: column; gap: 0; min-width: 520px; }
+  .d-box {
+    border: 1px solid var(--line-strong);
+    padding: 14px 18px;
+    background: var(--bg);
+    font-family: var(--mono);
+    font-size: 13px;
+    max-width: 520px;
+  }
+  .d-box .t { color: var(--ink); }
+  .d-box .n { color: var(--muted); font-size: 12px; display: block; margin-top: 4px; }
+  .d-box.accent { border-color: var(--accent); }
+  .d-box.accent .t { color: var(--accent); }
+  .d-arrow {
+    height: 26px;
+    border-left: 1px solid var(--line-strong);
+    margin-left: 26px;
+    position: relative;
+  }
+  .d-arrow::after {
+    content: "▼";
+    position: absolute;
+    left: -6px;
+    bottom: -4px;
+    font-size: 9px;
+    color: var(--line-strong);
+  }
+  .d-split { display: flex; gap: 20px; flex-wrap: wrap; }
+  .d-caption {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 20px;
+  }
+
+  /* ---------- demo video ---------- */
+  .demo { margin-top: 48px; max-width: 860px; }
+  .demo video,
+  .demo img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line-strong);
+    background: #16161a;
+  }
+  .demo figcaption {
+    font-size: 14.5px;
+    color: var(--muted);
+    margin-top: 14px;
+    max-width: 720px;
+  }
+  .demo .mono { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+
+  /* ---------- feature list ---------- */
+  .does { max-width: 780px; border-top: 1px solid var(--line-strong); margin-top: 32px; }
+  .does li {
+    list-style: none;
+    padding: 15px 0 15px 34px;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+  }
+  .does li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 14px;
+  }
+
+  /* ---------- boundaries ---------- */
+  .bounds { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 40px; }
+  .bound {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 24px;
+  }
+  .bound .k {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .bound p { font-size: 15.5px; color: var(--muted); }
+  .bound b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- stack ---------- */
+  .stack { display: flex; flex-wrap: wrap; gap: 8px; max-width: 900px; margin-top: 32px; }
+  .stack span {
+    font-family: var(--mono);
+    font-size: 13px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 7px 12px;
+  }
+
+  /* ---------- final ---------- */
+  .final { text-align: center; border-bottom: none; }
+  .final h2 { margin: 0 auto 20px; }
+  .final .text { margin: 0 auto 36px; }
+  .final .cta-row { justify-content: center; margin-bottom: 0; }
+
+  footer { padding: 28px 0; border-top: 1px solid var(--line); }
+  footer .wrap {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  @media (max-width: 760px) {
+    section { padding: 64px 0; }
+    .hero { padding: 68px 0 56px; }
+    .stats { grid-template-columns: 1fr; }
+    .bounds { grid-template-columns: 1fr; }
+    .bar .long { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="tag"><a href="../" style="text-decoration:none">← Все кейсы</a> <span class="long">· <b>Case study</b> · плазменная резка профиля</span></div>
+    <a class="contact" href="https://t.me/katamaranti" target="_blank" rel="noopener">Написать мне</a>
+  </div>
+</header>
+
+<!-- ================= 01 HERO ================= -->
+<section class="hero">
+  <div class="wrap">
+    <h1>Подготовка производства для линии плазменной резки судового профиля</h1>
+    <p class="sub">
+      Технолог собирает деталь из параметров — система строит её <em>твердотельную модель</em>,
+      проверяет резы на пересечения, раскладывает детали по хлыстам
+      и выгружает карту раскроя на линию.
+    </p>
+
+    <div class="cta-row">
+      <a class="btn primary" href="https://t.me/katamaranti" target="_blank" rel="noopener">Написать мне в Telegram</a>
+      <a class="btn ghost" href="#idea">Ключевая идея</a>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="n">3 млн ₽ → <span class="accent">1,1 млн ₽</span></div>
+        <div class="d">оценка подрядчика против себестоимости своими силами</div>
+      </div>
+      <div class="stat">
+        <div class="n">6</div>
+        <div class="d">типов судового профиля, и одна проверка на все</div>
+      </div>
+      <div class="stat">
+        <div class="n">31 500 строк</div>
+        <div class="d">один разработчик, от 3D-ядра до интерфейса</div>
+      </div>
+    </div>
+
+    <div class="badges">
+      <span>CadQuery / OpenCASCADE</span>
+      <span>OR-Tools CP-SAT</span>
+      <span>FastAPI</span>
+      <span>PostgreSQL</span>
+      <span>React Three Fiber</span>
+      <span>разработка с AI-агентами</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 02 PROBLEM ================= -->
+<section>
+  <div class="wrap">
+    <div class="label">01 / Проблема</div>
+    <h2>Бюджет не сходился с обещанным объёмом работ</h2>
+    <div class="text">
+      <p>
+        Крупный заказ судостроительного завода на линию плазменной резки профиля.
+        Бюджет заказчика не сходился с обещанным объёмом — искали, где снизить стоимость.
+        Блок «программа и диспетчеризация» сторонний подрядчик оценивал
+        в <em>3 миллиона рублей</em>. Я взял разработку на себя.
+      </p>
+      <p>
+        Задача внутри блока: у инженера-технолога есть 2D-чертежи деталей — их надо
+        превратить в проверенное задание для линии.
+      </p>
+    </div>
+
+    <ul class="pains">
+      <li data-n="01"><span>Шесть типов судового профиля: полособульб, гнутый швеллер, равнополочный и неравнополочный уголок, полоса, тавр. У каждого своя геометрия сечения.</span></li>
+      <li data-n="02"><span>Десятки типов резов и маркировок, у каждого свои параметры — углы, длины, привязки к граням.</span></li>
+      <li data-n="03"><span>Деталь с пересекающимися резами не должна попасть в производство: испорченный хлыст профиля — это деньги и сорванный срок.</span></li>
+      <li data-n="04"><span>Детали надо разложить по хлыстам так, чтобы отход был минимальным.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= 03 KEY IDEA ================= -->
+<section class="idea" id="idea">
+  <div class="wrap">
+    <div class="label">02 / Ключевая идея</div>
+    <blockquote>
+      Каждый рез оставляет после себя <span class="hl">тело</span>.
+      Проверка пересечений — это расстояние между телами.
+    </blockquote>
+
+    <div class="text">
+      <p>
+        Профиль строится как твердотельная модель, рез применяется к ней булевой операцией —
+        это очевидно. Неочевидно другое: перед резом мы запоминаем тело, после реза вычитаем
+        одно из другого и получаем <em>солид удалённого металла</em> — физическую форму того,
+        что вырезал резак.
+      </p>
+      <p>
+        Дальше всё становится простым. Вопрос «не пересекаются ли два реза» превращается
+        в расстояние между двумя телами. Не формула для полособульба, отдельная формула
+        для гнутого швеллера и ещё одна для уголка — <em>одна проверка на все шесть типов
+        профиля и на все типы резов сразу</em>. Визуализация достаётся почти даром:
+        модель уже построена, её остаётся отдать в браузер.
+      </p>
+    </div>
+
+    <div class="code">
+      <div class="code-head">backend/core/utils/math_helpers.py — извлечение удалённого металла</div>
+<pre>solid_before = wp.val()
+wp_after, cut_meta = cut_fn(wp, **kwargs)
+
+removed = solid_before.cut(wp_after.val())   <span class="c"># тело удалённого металла</span>
+<span class="k">if</span> removed.Volume() &gt; 1e-6:
+    <span class="k">return</span> wp_after, cut_meta, removed</pre>
+    </div>
+
+    <div class="code">
+      <div class="code-head">backend/core/validator.py — вся проверка пересечения резов</div>
+<pre><span class="k">for</span> existing_id, existing_solid <span class="k">in</span> self._cut_solids.items():
+    dist = removed_solid.distance(existing_solid)
+    <span class="k">if</span> dist &lt; COLLISION_DISTANCE_MM:          <span class="c"># 2 мм</span>
+        <span class="k">return</span> CollisionResult(
+            collision_type=<span class="c">"cut_cut"</span>,
+            conflict_cut_id=existing_id,
+            distance=dist,
+        )
+
+self._cut_solids[cut_id] = removed_solid</pre>
+    </div>
+
+    <p class="code-note">
+      Фрагменты сокращены: убраны обработка исключений OpenCASCADE и тексты сообщений.
+      Проверка работает для любого профиля и любой пары резов, потому что оперирует
+      не чертежом, а металлом.
+    </p>
+  </div>
+</section>
+
+<!-- ================= 04 ARCHITECTURE ================= -->
+<section>
+  <div class="wrap">
+    <div class="label">03 / Архитектура</div>
+    <h2>От параметров детали до карты раскроя</h2>
+
+    <div class="diagram">
+      <div class="flow">
+        <div class="d-box">
+          <span class="t">2D-чертёж → параметры детали</span>
+          <span class="n">профиль · длина · сечение · резы · маркировка &nbsp;/&nbsp; React + Zustand</span>
+        </div>
+        <div class="d-arrow"></div>
+        <div class="d-box">
+          <span class="t">FastAPI → CadQuery в пуле потоков</span>
+          <span class="n">геометрия синхронна и CPU-bound: в event loop она бы всё остановила</span>
+        </div>
+        <div class="d-arrow"></div>
+        <div class="d-box accent">
+          <span class="t">твердотельная модель профиля → резы булевыми операциями</span>
+          <span class="n">каждый рез отдаёт тело удалённого металла</span>
+        </div>
+        <div class="d-arrow"></div>
+        <div class="d-split">
+          <div class="d-box" style="flex:1">
+            <span class="t">GLB → 3D в браузере</span>
+            <span class="n">React Three Fiber, подсветка конфликтов</span>
+          </div>
+          <div class="d-box" style="flex:1">
+            <span class="t">проверка коллизий</span>
+            <span class="n">расстояние между телами &lt; 2 мм</span>
+          </div>
+        </div>
+        <div class="d-arrow"></div>
+        <div class="d-box">
+          <span class="t">деталь → PostgreSQL</span>
+          <span class="n">проекты, чертежи, детали, карты раскроя</span>
+        </div>
+        <div class="d-arrow"></div>
+        <div class="d-box accent">
+          <span class="t">раскрой → OR-Tools CP-SAT</span>
+          <span class="n">ширина реза + форма торцов деталей</span>
+        </div>
+        <div class="d-arrow"></div>
+        <div class="d-box">
+          <span class="t">карта раскроя → CSV согласованного формата → на линию</span>
+        </div>
+      </div>
+      <p class="d-caption">Модель — единственный источник истины: и для картинки, и для проверок.</p>
+    </div>
+
+    <figure class="demo">
+      <video controls preload="none" playsinline poster="assets/poster.jpg" width="1920" height="900">
+        <source src="assets/demo.mp4" type="video/mp4">
+        Ваш браузер не воспроизводит video — <a href="assets/demo.mp4">скачать ролик</a>.
+      </video>
+      <figcaption>
+        Технолог добавляет резы на тело профиля. Третий рез встаёт слишком близко ко второму —
+        система подсвечивает конфликт красным и сообщает расстояние:
+        <span class="mono">0.00 мм &lt; 2.0 мм</span>. Та самая проверка расстояния между телами.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================= 05 NESTING ================= -->
+<section>
+  <div class="wrap">
+    <div class="label">04 / Раскрой</div>
+    <h2>Задача об упаковке, у которой детали с косыми торцами</h2>
+    <div class="text">
+      <p>
+        Разложить детали по хлыстам профиля — на вид школьная задача об упаковке.
+        На деле у деталей косые торцы: два соседа со встречными скосами придвигаются
+        друг к другу вплотную, а два одинаковых — нет. Зазор между деталями зависит
+        от того, какими торцами они повёрнуты друг к другу, плюс ширина самого реза.
+      </p>
+      <p>
+        Поэтому это не жадная эвристика, а задача комбинаторной оптимизации:
+        <em>OR-Tools CP-SAT</em> в формулировке через маршруты — хлыст это «машина»,
+        детали на нём — «маршрут». Симметричные детали разрешено переворачивать,
+        асимметричные — нет. Солвер возвращает <em>OPTIMAL</em>, если доказал оптимальность,
+        и <em>FEASIBLE</em>, если упёрся в лимит времени.
+      </p>
+    </div>
+
+    <figure class="demo">
+      <img src="assets/nesting.png" alt="Экран раскроя: 16 деталей разложены по двум хлыстам профиля" width="1920" height="810" loading="lazy">
+      <figcaption>
+        Партия из 16 деталей трёх типоразмеров легла на два хлыста по 12 метров.
+        Ширина реза — <span class="mono">5 мм</span>, заполнение первого хлыста —
+        <span class="mono">11 050 из 12 000 мм</span>. Порядок деталей солвер выбирает сам:
+        соседей подбирает так, чтобы их торцы сходились с минимальным зазором.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================= 06 WHAT IT DOES ================= -->
+<section>
+  <div class="wrap">
+    <div class="label">05 / Что система делает</div>
+    <h2>Функции, доведённые до пользователя</h2>
+
+    <ul class="does">
+      <li>строит параметрическую твердотельную модель шести типов судового профиля;</li>
+      <li>применяет резы и маркировку как булевы операции, извлекая тело удалённого металла;</li>
+      <li>проверяет пересечения резов, наложение маркировок и корректность параметров;</li>
+      <li>показывает деталь в браузере в 3D с подсветкой конфликтов;</li>
+      <li>хранит проекты, чертежи, детали и карты раскроя в PostgreSQL;</li>
+      <li>раскладывает детали по хлыстам солвером CP-SAT с учётом ширины реза и формы торцов;</li>
+      <li>выгружает карту раскроя в CSV согласованного с линией формата и печатает PDF.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= 07 BOUNDARIES ================= -->
+<section>
+  <div class="wrap">
+    <div class="label">06 / Границы решения</div>
+    <h2>Чего система не делает — и почему это осознанно</h2>
+    <div class="text">
+      <p class="muted">
+        Инженерное решение честнее описывать вместе с его границами.
+        Вот что осталось за рамкой блока.
+      </p>
+    </div>
+
+    <div class="bounds">
+      <div class="bound">
+        <div class="k">не читает чертежи</div>
+        <p><b>Параметры переносит человек.</b> Распознавание DWG/DXF — отдельный проект, в бюджет блока он не входил.</p>
+      </div>
+      <div class="bound">
+        <div class="k">не генерирует G-код</div>
+        <p><b>Выход — CSV согласованного с линией формата.</b> Стойка ЧПУ остаётся за границей системы.</p>
+      </div>
+      <div class="bound">
+        <div class="k">не моделирует резак</div>
+        <p><b>Проверяются коллизии резов между собой</b>, а не столкновения резака с оснасткой. Каркас для запретных зон профиля заложен, зоны ещё не заданы.</p>
+      </div>
+      <div class="bound">
+        <div class="k">не проверена на металле</div>
+        <p><b>Пайплайн доведён до CSV.</b> Приёмка на линии впереди.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 08 METHOD ================= -->
+<section>
+  <div class="wrap">
+    <div class="label">07 / Метод разработки</div>
+    <h2>Блок под команду, закрытый одним человеком</h2>
+    <div class="text">
+      <p>
+        Работа заняла <em>26 активных рабочих дней</em> — 210 коммитов с апреля по июль 2026.
+        218 файлов, 31 494 строки, из них 7 901 — тесты.
+      </p>
+      <p>
+        Метод — разработка с AI-агентами. Что сделало её управляемой на проекте такого размера:
+        требования с идентификаторами прямо в шапках модулей, Pydantic-схемы и словарь типов
+        резов как единственный источник истины, тесты на бэкенде и фронте, миграции Alembic,
+        жёсткая нарезка на модули — профиль, рез, солвер, экспорт.
+      </p>
+      <p>
+        Агент пишет быстро и уверенно — в том числе там, где ошибается.
+        Поэтому последний контур контроля остаётся человеческим: архитектурные решения
+        и чтение диффа я не делегирую.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 09 STACK ================= -->
+<section>
+  <div class="wrap">
+    <div class="label">08 / Стек</div>
+    <h2>Чем это сделано</h2>
+    <div class="stack">
+      <span>Python</span>
+      <span>FastAPI</span>
+      <span>CadQuery</span>
+      <span>OpenCASCADE</span>
+      <span>OR-Tools CP-SAT</span>
+      <span>PostgreSQL 16</span>
+      <span>SQLAlchemy async</span>
+      <span>Alembic</span>
+      <span>React</span>
+      <span>TypeScript</span>
+      <span>Vite</span>
+      <span>Tailwind</span>
+      <span>React Three Fiber</span>
+      <span>Three.js</span>
+      <span>Zustand</span>
+      <span>Docker Compose</span>
+      <span>pytest</span>
+      <span>Playwright</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 10 APPLICABILITY ================= -->
+<section>
+  <div class="wrap">
+    <div class="label">09 / Где это применимо</div>
+    <h2>Тот же контур работает шире</h2>
+    <div class="text">
+      <p>
+        Параметрическая деталь → твердотельная модель → проверки на модели →
+        оптимизация раскроя → выгрузка на оборудование.
+      </p>
+      <p class="muted">
+        Лазерная и гидроабразивная резка, гибка, любой раскрой длинномера.
+        Везде, где инженер описывает деталь параметрами, а ошибка стоит испорченной заготовки.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 11 CTA ================= -->
+<section class="final">
+  <div class="wrap">
+    <div class="label" style="display:inline-block">10 / Контакт</div>
+    <h2>Обсудить задачу</h2>
+    <div class="text">
+      <p class="muted">
+        Код не публикую — показываю на созвоне.
+      </p>
+    </div>
+    <div class="cta-row">
+      <a class="btn primary" href="https://t.me/katamaranti" target="_blank" rel="noopener">Написать мне в Telegram</a>
+      <a class="btn ghost" href="../">Другие кейсы</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>case study · плазменная резка профиля · 2026</div>
+    <div>
+      <a href="https://t.me/katamaranti" target="_blank" rel="noopener" style="text-decoration:none">t.me/katamaranti</a>
+      ·
+      <a href="mailto:job.alloy@gmail.com" style="text-decoration:none">job.alloy@gmail.com</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
